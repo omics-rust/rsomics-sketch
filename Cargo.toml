@@ -1,0 +1,43 @@
+[package]
+name = "rsomics-sketch"
+version = "0.1.0"
+description = "Persistent DNA FracMinHash sketches, comparison, and linear search"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/omics-rust/rsomics-sketch"
+homepage = "https://github.com/omics-rust/rsomics-sketch"
+documentation = "https://docs.rs/rsomics-sketch"
+authors = ["Zane Leong <efd@live.com>"]
+readme = "README.md"
+categories = ["science", "command-line-utilities"]
+keywords = ["minhash", "fracminhash", "bioinformatics", "sequence", "sourmash"]
+
+[[bin]]
+name = "rsomics-sketch"
+path = "src/main.rs"
+
+[lib]
+name = "rsomics_sketch"
+path = "src/lib.rs"
+doctest = false
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+md5 = "0.8"
+rsomics-common = "0.11"
+rsomics-help = "0.4"
+rsomics-kmer = "0.2.2"
+rsomics-seqio = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+criterion = { version = "0.7", default-features = false, features = ["cargo_bench_support"] }
+tempfile = "3"
+
+[[bench]]
+name = "sketch"
+harness = false
