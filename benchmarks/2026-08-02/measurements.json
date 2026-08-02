@@ -1,0 +1,35 @@
+{
+  "date": "2026-08-02",
+  "machine": {
+    "cpu": "Apple M2",
+    "architecture": "arm64",
+    "os": "macOS 26.6 (25G72)",
+    "rust": "1.97.1"
+  },
+  "tools": {
+    "rsomics-sketch": "0.1.0",
+    "rsomics-kmer": "0.2.2",
+    "sourmash": "4.9.4",
+    "sourmash_source": "f5881ac"
+  },
+  "genome": {
+    "input_bytes": 4699745,
+    "input_sha256": "53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4",
+    "source_gzip_sha256": "a96d3cfa58c88d477013c768f90a11d2386d42a70d566abfb6d9013dcbd24255",
+    "output_sha256": "79299a40184a8b5c1bb119c72eff6ca60aa3620d3dde796600c51b5d62ba569d",
+    "warmups": 3,
+    "runs": 15,
+    "sourmash_seconds": [1.03111469462, 1.05059381962, 1.01972757062, 1.00123323662, 1.01563811162, 1.01056573662, 1.14811565262, 1.01948106962, 1.02403040362, 1.03583673662, 1.07200065362, 1.02048306962, 1.00291090362, 1.03844648662, 1.03696369462],
+    "rsomics_seconds": [0.78178552862, 0.77964952862, 0.76715852862, 0.76943465262, 0.78578081962, 0.76888477762, 0.99513990362, 0.95335265262, 0.83008340262, 0.89766436162, 0.79220506962, 0.78054552862, 0.77389569562, 0.76158944462, 0.76531727862],
+    "sourmash_peak_rss_bytes": [133267456, 136151040, 134955008, 135168000, 135233536],
+    "rsomics_peak_rss_bytes": [9682944, 9682944, 9682944, 9682944, 9682944]
+  },
+  "fastq_abundance": {
+    "reads": 6282141,
+    "input_sha256": "d7a15c1762d64a5434ced0cc665d7f5d167ca81a71e239f8237b9cd490dd7683",
+    "output_sha256": "804eda4e4dca0fd5d5636ce238fab4204a5219c56302cc873c0768be0659cd87",
+    "runs": 1,
+    "sourmash": {"elapsed_seconds": 43.29, "user_seconds": 38.21, "system_seconds": 2.40, "peak_rss_bytes": 108118016},
+    "rsomics": {"elapsed_seconds": 51.04, "user_seconds": 46.64, "system_seconds": 2.83, "peak_rss_bytes": 9093120}
+  }
+}
