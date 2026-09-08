@@ -524,6 +524,69 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reproduces pair-local sampling in a mixed-scale collection"]
+    fn comparison_uses_one_collection_scale() {
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("collection.sig");
+        let signatures = [
+            signature("a", vec![1, 9_223_372_036_854_775_809]),
+            signature("b", vec![1]),
+            Signature::new("c.fa".to_owned(), None, 3, 42, 2, vec![1], None),
+        ];
+        crate::signature::write_signatures(&input, &signatures).unwrap();
+        let pairs = directory.path().join("pairs.tsv");
+        let report = compare(
+            std::slice::from_ref(&input),
+            &pairs,
+            &CompareOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(report.comparisons, 3);
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .from_path(&pairs)
+            .unwrap();
+        let rows: Vec<_> = reader
+            .records()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows.len(), 3);
+        for row in rows {
+            assert_eq!(&row[4], "2");
+            for column in [5, 6, 7, 8, 9, 10, 11, 12] {
+                assert_eq!(row[column].parse::<f64>().unwrap(), 1.0);
+            }
+        }
+        for measure in [MatrixMeasure::Jaccard, MatrixMeasure::Containment] {
+            let matrix = directory.path().join("matrix.tsv");
+            compare(
+                std::slice::from_ref(&input),
+                &matrix,
+                &CompareOptions {
+                    shape: OutputShape::Matrix,
+                    matrix_measure: measure,
+                },
+            )
+            .unwrap();
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(b'\t')
+                .from_path(matrix)
+                .unwrap();
+            let values: Vec<Vec<f64>> = reader
+                .records()
+                .map(|row| {
+                    row.unwrap()
+                        .iter()
+                        .skip(1)
+                        .map(|value| value.parse().unwrap())
+                        .collect()
+                })
+                .collect();
+            assert_eq!(values, vec![vec![1.0; 3]; 3]);
+        }
+    }
+
+    #[test]
     fn empty_off_diagonal_uses_sourmash_zero_semantics() {
         let left = signature("left", Vec::new());
         let right = signature("right", Vec::new());
