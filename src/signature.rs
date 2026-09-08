@@ -370,6 +370,31 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reproduces the scaled signature round-trip failure"]
+    fn generated_scaled_signatures_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let signature = Signature::new(
+            "one.fa".to_owned(),
+            None,
+            31,
+            42,
+            93,
+            vec![1, 198_352_086_814_081_216],
+            Some(vec![2, 1]),
+        );
+        assert_eq!(signature.sketch().max_hash(), 198_352_086_814_081_216);
+        for name in ["one.sig", "one.sig.gz"] {
+            let path = directory.path().join(name);
+            write_signatures(&path, std::slice::from_ref(&signature)).unwrap();
+            let loaded = load_signatures(&path).unwrap();
+            assert_eq!(loaded[0].sketch().scaled(), 93);
+            assert_eq!(loaded[0].sketch().max_hash(), 198_352_086_814_081_216);
+            assert_eq!(loaded[0].sketch().hashes(), &[1, 198_352_086_814_081_216]);
+            assert_eq!(loaded[0].sketch().abundances(), Some([2, 1].as_slice()));
+        }
+    }
+
+    #[test]
     fn gzip_round_trip_preserves_validated_signature() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("one.sig.gz");
