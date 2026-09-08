@@ -125,6 +125,41 @@ fn generated_signatures_are_byte_identical() {
 
 #[test]
 #[ignore = "requires the pinned live sourmash oracle"]
+fn short_sequences_match_sourmash() {
+    let sourmash = sourmash();
+    let rsomics = env!("CARGO_BIN_EXE_rsomics-sketch");
+    let directory = tempfile::tempdir().unwrap();
+    for k in [31, 51] {
+        for extension in ["fa", "fq"] {
+            for (name, lengths) in [
+                ("mixed", vec![3, k, k + 1, 2]),
+                ("all-short", vec![3, k - 1, 2]),
+            ] {
+                let input = directory.path().join(format!("{name}-{k}.{extension}"));
+                let mut records = String::new();
+                for (index, length) in lengths.into_iter().enumerate() {
+                    let sequence = ["A", "C", "G", "N"][index].repeat(length);
+                    if extension == "fa" {
+                        records.push_str(&format!(">record-{index}\n{sequence}\n"));
+                    } else {
+                        let quality = "I".repeat(length);
+                        records.push_str(&format!("@record-{index}\n{sequence}\n+\n{quality}\n"));
+                    }
+                }
+                fs::write(&input, records).unwrap();
+                let expected = directory.path().join("expected.sig");
+                let actual = directory.path().join("actual.sig");
+                let parameter = format!("k={k},scaled=1,abund");
+                sketch_with(&sourmash, &input, &expected, &parameter);
+                sketch_with(rsomics, &input, &actual, &parameter);
+                assert_eq!(fs::read(actual).unwrap(), fs::read(expected).unwrap());
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires the pinned live sourmash oracle"]
 fn comparison_and_search_scores_match() {
     let sourmash = sourmash();
     let rsomics = env!("CARGO_BIN_EXE_rsomics-sketch");
