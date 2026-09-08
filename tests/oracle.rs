@@ -82,11 +82,13 @@ fn generated_signatures_are_byte_identical() {
     fasta.push(b'\n');
     fs::write(&input, fasta).unwrap();
 
-    for (index, parameter) in [
-        "k=1,scaled=1,noabund",
-        "k=31,scaled=10,noabund",
-        "k=51,scaled=100,abund",
-        "k=17,scaled=7,noabund,seed=4294967297",
+    for (index, (parameter, scaled)) in [
+        ("k=1,scaled=1,noabund", 1),
+        ("k=31,scaled=10,noabund", 10),
+        ("k=51,scaled=100,abund", 100),
+        ("k=17,scaled=7,noabund,seed=4294967297", 7),
+        ("k=17,scaled=93,abund", 93),
+        ("k=17,scaled=3583599928,noabund", 3_583_599_928),
     ]
     .into_iter()
     .enumerate()
@@ -95,7 +97,9 @@ fn generated_signatures_are_byte_identical() {
         let actual = directory.path().join(format!("actual-{index}.sig"));
         sketch_with(&sourmash, &input, &expected, parameter);
         sketch_with(rsomics, &input, &actual, parameter);
-        assert_eq!(fs::read(actual).unwrap(), fs::read(expected).unwrap());
+        assert_eq!(fs::read(&actual).unwrap(), fs::read(expected).unwrap());
+        let loaded = rsomics_sketch::load_signatures(&actual).unwrap();
+        assert_eq!(loaded[0].sketch().scaled(), scaled);
     }
 
     let second = directory.path().join("second.fa");

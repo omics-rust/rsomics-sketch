@@ -230,13 +230,12 @@ fn validate(raw: RawSignature, path: &Path, index: usize) -> Result<Signature> {
     if sketch.max_hash == 0 {
         return Err(profile_error(location(), "max_hash", "0"));
     }
-    let scaled = scaled_for_max_hash(sketch.max_hash);
-    if max_hash_for_scaled(scaled) != sketch.max_hash {
-        return Err(RsomicsError::InvalidInput(format!(
+    let scaled = scaled_for_max_hash(sketch.max_hash).ok_or_else(|| {
+        RsomicsError::InvalidInput(format!(
             "{} has a max_hash outside the pinned scaled profile",
             location()
-        )));
-    }
+        ))
+    })?;
     if sketch.mins.windows(2).any(|pair| pair[0] >= pair[1]) {
         return Err(RsomicsError::InvalidInput(format!(
             "{} hashes are not strictly increasing",
@@ -292,11 +291,16 @@ fn validate(raw: RawSignature, path: &Path, index: usize) -> Result<Signature> {
     })
 }
 
-fn scaled_for_max_hash(max_hash: u64) -> u32 {
-    match max_hash {
-        u64::MAX => 1,
-        _ => (u64::MAX as f64 / max_hash as f64) as u32,
-    }
+fn scaled_for_max_hash(max_hash: u64) -> Option<u32> {
+    let estimate = (u64::MAX as f64 / max_hash as f64) as u32;
+    [
+        Some(estimate),
+        estimate.checked_sub(1),
+        estimate.checked_add(1),
+    ]
+    .into_iter()
+    .flatten()
+    .find(|&scaled| scaled != 0 && max_hash_for_scaled(scaled) == max_hash)
 }
 
 fn digest(ksize: u32, hashes: &[u64]) -> String {
@@ -370,27 +374,49 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "reproduces the scaled signature round-trip failure"]
     fn generated_scaled_signatures_round_trip() {
         let directory = tempfile::tempdir().unwrap();
-        let signature = Signature::new(
-            "one.fa".to_owned(),
-            None,
-            31,
-            42,
-            93,
-            vec![1, 198_352_086_814_081_216],
-            Some(vec![2, 1]),
-        );
-        assert_eq!(signature.sketch().max_hash(), 198_352_086_814_081_216);
-        for name in ["one.sig", "one.sig.gz"] {
-            let path = directory.path().join(name);
-            write_signatures(&path, std::slice::from_ref(&signature)).unwrap();
-            let loaded = load_signatures(&path).unwrap();
-            assert_eq!(loaded[0].sketch().scaled(), 93);
-            assert_eq!(loaded[0].sketch().max_hash(), 198_352_086_814_081_216);
-            assert_eq!(loaded[0].sketch().hashes(), &[1, 198_352_086_814_081_216]);
-            assert_eq!(loaded[0].sketch().abundances(), Some([2, 1].as_slice()));
+        for (scaled, max_hash) in [
+            (1, u64::MAX),
+            (93, 198_352_086_814_081_216),
+            (99, 186_330_748_219_288_416),
+            (1_000, 18_446_744_073_709_552),
+            (3_583_599_928, 5_147_545_608),
+            (u32::MAX, 4_294_967_297),
+        ] {
+            let signature = Signature::new(
+                "one.fa".to_owned(),
+                None,
+                31,
+                42,
+                scaled,
+                vec![1, max_hash],
+                Some(vec![2, 1]),
+            );
+            assert_eq!(signature.sketch().max_hash(), max_hash);
+            for name in ["one.sig", "one.sig.gz"] {
+                let path = directory.path().join(name);
+                write_signatures(&path, std::slice::from_ref(&signature)).unwrap();
+                let loaded = load_signatures(&path).unwrap();
+                assert_eq!(loaded[0].sketch().scaled(), scaled);
+                assert_eq!(loaded[0].sketch().max_hash(), max_hash);
+                assert_eq!(loaded[0].sketch().hashes(), &[1, max_hash]);
+                assert_eq!(loaded[0].sketch().abundances(), Some([2, 1].as_slice()));
+            }
+        }
+    }
+
+    #[test]
+    fn unrepresentable_scaled_thresholds_are_rejected() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("bad.sig");
+        let signature = Signature::new("one.fa".to_owned(), None, 31, 42, 93, vec![1], None);
+        for max_hash in [0, 1, 4_294_967_296, 198_352_086_814_081_217] {
+            let mut raw = RawSignature::from(&signature);
+            raw.signatures[0].max_hash = max_hash;
+            fs::write(&path, serde_json::to_vec(&vec![raw]).unwrap()).unwrap();
+            let error = load_signatures(&path).unwrap_err();
+            assert!(error.to_string().contains("max_hash"));
         }
     }
 

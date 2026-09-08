@@ -26,6 +26,12 @@ signature. Sequence bytes are normalized case-insensitively to A/C/G/T.
 Ambiguous windows are skipped, matching the default sourmash DNA sketch
 profile; `--check-sequence` instead rejects the first invalid byte.
 
+Loading preserves the serialized hash threshold and recovers the integer
+`scaled` value that created it. This corrects a sourmash 4.9.4 metadata edge
+case: its floating-point inverse can report 92 for a signature made with
+`scaled=93`. Signature bytes remain interoperable; exact metadata or mixed-scale
+comparison equivalence is not claimed where that upstream truncation occurs.
+
 Comparison and search downsample compatible inputs to the coarsest `scaled`
 value. They reject mismatched `k`, seed, or abundance profiles before writing
 the destination. ANI columns are explicitly named as the directional
