@@ -263,6 +263,83 @@ fn comparison_and_search_scores_match() {
     );
 }
 
+#[test]
+#[ignore = "requires the pinned live sourmash oracle"]
+fn mixed_scale_collection_matches_sourmash() {
+    let sourmash = sourmash();
+    let rsomics = rsomics();
+    let directory = tempfile::tempdir().unwrap();
+    let input = directory.path().join("collection.sig");
+    let signatures: Vec<_> = [
+        (
+            "a",
+            u64::MAX,
+            vec![1_u64, 9_223_372_036_854_775_809],
+            "397c59a61df2cc1d74a9991f0015b566",
+        ),
+        ("b", u64::MAX, vec![1], "c16a5320fa475530d9583c34fd356ef5"),
+        (
+            "c",
+            9_223_372_036_854_775_808,
+            vec![1],
+            "c16a5320fa475530d9583c34fd356ef5",
+        ),
+    ]
+    .into_iter()
+    .map(|(name, max_hash, hashes, digest)| {
+        serde_json::json!({
+            "class": "sourmash_signature",
+            "email": "",
+            "filename": format!("{name}.fa"),
+            "name": name,
+            "license": "CC0",
+            "hash_function": "0.murmur64",
+            "version": 0.4,
+            "signatures": [{
+                "num": 0,
+                "ksize": 3,
+                "seed": 42,
+                "max_hash": max_hash,
+                "mins": hashes,
+                "md5sum": digest,
+                "molecule": "DNA"
+            }]
+        })
+    })
+    .collect();
+    fs::write(&input, serde_json::to_vec(&signatures).unwrap()).unwrap();
+    for measure in ["jaccard", "containment"] {
+        let expected = directory.path().join(format!("{measure}.csv"));
+        let mut arguments = vec![
+            OsStr::new("compare"),
+            OsStr::new("--csv"),
+            expected.as_os_str(),
+            input.as_os_str(),
+        ];
+        if measure == "containment" {
+            arguments.push(OsStr::new("--containment"));
+        }
+        run(&sourmash, &arguments);
+        let actual = directory.path().join(format!("{measure}.tsv"));
+        run(
+            &rsomics,
+            &[
+                OsStr::new("compare"),
+                input.as_os_str(),
+                OsStr::new("--shape"),
+                OsStr::new("matrix"),
+                OsStr::new("--matrix-measure"),
+                OsStr::new(measure),
+                OsStr::new("-o"),
+                actual.as_os_str(),
+            ],
+        );
+        let expected = numeric_matrix(&expected, b',', false);
+        assert_eq!(expected, vec![vec![1.0; 3]; 3]);
+        assert_eq!(numeric_matrix(&actual, b'\t', true), expected);
+    }
+}
+
 fn numeric_matrix(path: &Path, delimiter: u8, row_labels: bool) -> Vec<Vec<f64>> {
     let mut reader = csv::ReaderBuilder::new()
         .delimiter(delimiter)

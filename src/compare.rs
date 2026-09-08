@@ -166,9 +166,14 @@ pub fn compare(
     for pair in signatures.windows(2) {
         compatible(pair[0].sketch(), pair[1].sketch())?;
     }
+    let scaled = signatures
+        .iter()
+        .map(|signature| signature.sketch().scaled())
+        .max()
+        .expect("at least two signatures were loaded");
     write_atomic(output, |writer| match options.shape {
-        OutputShape::Pairs => write_pairs(writer, &signatures),
-        OutputShape::Matrix => write_matrix(writer, &signatures, options.matrix_measure),
+        OutputShape::Pairs => write_pairs(writer, &signatures, scaled),
+        OutputShape::Matrix => write_matrix(writer, &signatures, scaled, options.matrix_measure),
     })?;
     Ok(CompareReport {
         signatures: signatures.len(),
@@ -274,7 +279,14 @@ fn compatible(left: &FracMinHash, right: &FracMinHash) -> Result<()> {
 
 fn metrics(left: &FracMinHash, right: &FracMinHash) -> Result<Metrics> {
     compatible(left, right)?;
-    let scaled = left.scaled().max(right.scaled());
+    Ok(metrics_at_scale(
+        left,
+        right,
+        left.scaled().max(right.scaled()),
+    ))
+}
+
+fn metrics_at_scale(left: &FracMinHash, right: &FracMinHash, scaled: u32) -> Metrics {
     let max_hash = max_hash_for_scaled(scaled);
     let left_hashes = left.hashes().partition_point(|hash| *hash <= max_hash);
     let right_hashes = right.hashes().partition_point(|hash| *hash <= max_hash);
@@ -287,7 +299,7 @@ fn metrics(left: &FracMinHash, right: &FracMinHash) -> Result<Metrics> {
     let left_containment = ratio(intersection, left_hashes);
     let right_containment = ratio(intersection, right_hashes);
     let ksize = f64::from(left.ksize());
-    Ok(Metrics {
+    Metrics {
         scaled,
         intersection,
         left_hashes,
@@ -297,7 +309,7 @@ fn metrics(left: &FracMinHash, right: &FracMinHash) -> Result<Metrics> {
         right_containment,
         left_ani: left_containment.powf(1.0 / ksize),
         right_ani: right_containment.powf(1.0 / ksize),
-    })
+    }
 }
 
 fn intersection(left: &[u64], right: &[u64]) -> usize {
@@ -326,7 +338,7 @@ fn ratio(numerator: usize, denominator: usize) -> f64 {
     }
 }
 
-fn write_pairs(writer: &mut std::fs::File, signatures: &[&Signature]) -> Result<()> {
+fn write_pairs(writer: &mut std::fs::File, signatures: &[&Signature], scaled: u32) -> Result<()> {
     let mut csv = csv::WriterBuilder::new()
         .delimiter(b'\t')
         .from_writer(writer);
@@ -348,7 +360,11 @@ fn write_pairs(writer: &mut std::fs::File, signatures: &[&Signature]) -> Result<
     .map_err(csv_error)?;
     for left in 0..signatures.len() {
         for right in left + 1..signatures.len() {
-            let metrics = metrics(signatures[left].sketch(), signatures[right].sketch())?;
+            let metrics = metrics_at_scale(
+                signatures[left].sketch(),
+                signatures[right].sketch(),
+                scaled,
+            );
             csv.write_record([
                 signatures[left].label().to_owned(),
                 signatures[right].label().to_owned(),
@@ -373,6 +389,7 @@ fn write_pairs(writer: &mut std::fs::File, signatures: &[&Signature]) -> Result<
 fn write_matrix(
     writer: &mut std::fs::File,
     signatures: &[&Signature],
+    scaled: u32,
     measure: MatrixMeasure,
 ) -> Result<()> {
     let mut csv = csv::WriterBuilder::new()
@@ -393,7 +410,7 @@ fn write_matrix(
             let value = if row == column {
                 1.0
             } else {
-                let metrics = metrics(left.sketch(), right.sketch())?;
+                let metrics = metrics_at_scale(left.sketch(), right.sketch(), scaled);
                 match measure {
                     MatrixMeasure::Jaccard => metrics.jaccard,
                     MatrixMeasure::Containment => metrics.right_containment,
@@ -524,7 +541,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "reproduces pair-local sampling in a mixed-scale collection"]
     fn comparison_uses_one_collection_scale() {
         let directory = tempfile::tempdir().unwrap();
         let input = directory.path().join("collection.sig");
@@ -583,6 +599,45 @@ mod tests {
                 })
                 .collect();
             assert_eq!(values, vec![vec![1.0; 3]; 3]);
+        }
+    }
+
+    #[test]
+    fn search_keeps_query_target_sampling() {
+        let directory = tempfile::tempdir().unwrap();
+        let query = directory.path().join("query.sig");
+        let database = directory.path().join("database.sig");
+        let output = directory.path().join("matches.tsv");
+        crate::signature::write_signatures(
+            &query,
+            &[signature("a", vec![1, 9_223_372_036_854_775_809])],
+        )
+        .unwrap();
+        crate::signature::write_signatures(
+            &database,
+            &[
+                signature("b", vec![1]),
+                Signature::new("c.fa".to_owned(), None, 3, 42, 2, vec![1], None),
+            ],
+        )
+        .unwrap();
+        let report = search(&query, &[database], &output, &SearchOptions::default()).unwrap();
+        assert_eq!(report.matches, 2);
+        let mut reader = csv::ReaderBuilder::new()
+            .delimiter(b'\t')
+            .from_path(output)
+            .unwrap();
+        let rows: Vec<_> = reader
+            .records()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        for (row, (filename, score, scaled)) in
+            rows.iter().zip([("c.fa", 1.0, "2"), ("b.fa", 0.5, "1")])
+        {
+            assert_eq!(&row[4], filename);
+            assert_eq!(row[0].parse::<f64>().unwrap(), score);
+            assert_eq!(&row[8], scaled);
         }
     }
 

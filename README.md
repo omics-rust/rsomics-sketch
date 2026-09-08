@@ -32,8 +32,9 @@ case: its floating-point inverse can report 92 for a signature made with
 `scaled=93`. Signature bytes remain interoperable; exact metadata or mixed-scale
 comparison equivalence is not claimed where that upstream truncation occurs.
 
-Comparison and search downsample compatible inputs to the coarsest `scaled`
-value. They reject mismatched `k`, seed, or abundance profiles before writing
+Comparison uses the coarsest `scaled` value across the whole input collection;
+search downsamples each query/target pair to their coarser value.
+Both reject mismatched `k`, seed, or abundance profiles before writing
 the destination. ANI columns are explicitly named as the directional
 containment-root estimator and are not Mash distance estimates.
 Containment matrices follow sourmash orientation: each cell is the fraction of
