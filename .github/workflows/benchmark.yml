@@ -1,0 +1,140 @@
+name: Sketch construction measurements
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15]
+        workload: [genome, fastq-abundance]
+    defaults:
+      run:
+        shell: bash
+    env:
+      REFERENCE_REVISION: 23e42f37e9578e59d9935c0d529b07d1aac49eb9
+      CANDIDATE_REVISION: 61de048cb1fce0c860beb22e78d2cdf9233aac39
+      WORKLOAD: ${{ matrix.workload }}
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use isolated runner paths
+        run: |
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "PIP_CACHE_DIR=$RUNNER_TEMP/pip-cache" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/evidence/builds" "$RUNNER_TEMP/inputs"
+      - uses: dtolnay/rust-toolchain@1.91.0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify recorder contracts
+        run: python -B -m unittest discover -s .github/benchmarks -p test_measure.py
+      - name: Install and record the pinned oracle
+        run: |
+          python -m pip install --report "$RUNNER_TEMP/evidence/pip-install.json" sourmash==4.9.4
+          test "$(sourmash --version)" = "sourmash 4.9.4"
+          python -m pip freeze > "$RUNNER_TEMP/evidence/pip-freeze.txt"
+      - name: Build exact product controls before measurement
+        run: |
+          for variant in baseline reference candidate; do
+            source_dir="$RUNNER_TEMP/source-$variant"
+            evidence="$RUNNER_TEMP/evidence/builds/$variant"
+            mkdir -p "$source_dir" "$evidence"
+            git archive "$GITHUB_SHA" | tar -x -C "$source_dir"
+            export CARGO_HOME="$RUNNER_TEMP/cargo-$variant"
+            export CARGO_TARGET_DIR="$RUNNER_TEMP/target-$variant"
+            mkdir -p "$CARGO_HOME"
+            if [[ "$variant" != baseline ]]; then
+              revision="$REFERENCE_REVISION"
+              if [[ "$variant" == candidate ]]; then revision="$CANDIDATE_REVISION"; fi
+              printf '[patch.crates-io.rsomics-kmer]\ngit = "https://github.com/omics-rust/rsomics-kmer"\nrev = "%s"\n' "$revision" > "$CARGO_HOME/config.toml"
+              cp "$CARGO_HOME/config.toml" "$evidence/"
+              (cd "$source_dir" && cargo update -p rsomics-kmer)
+            fi
+            (
+              cd "$source_dir"
+              cargo metadata --locked --format-version 1 > "$evidence/metadata.json"
+              jq -e '.target_directory == env.CARGO_TARGET_DIR' "$evidence/metadata.json"
+              if [[ "$variant" == baseline ]]; then
+                jq -e '[.packages[] | select(.name == "rsomics-kmer")] | length == 1 and .[0].version == "0.2.2" and (.[0].source | startswith("registry+"))' "$evidence/metadata.json"
+                python -c 'import tomllib; p = next(p for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "rsomics-kmer"); assert p["checksum"] == "e1254977d1eaf89b29e727b7ea552ec8bd4bd0740b45fa40ac943e93ffaf9ed4"'
+              else
+                jq -e --arg rev "$revision" '[.packages[] | select(.name == "rsomics-kmer")] | length == 1 and .[0].version == "0.2.2" and (.[0].source | startswith("git+https://github.com/omics-rust/rsomics-kmer?") and endswith("#" + $rev))' "$evidence/metadata.json"
+              fi
+              jq -S '[.packages[] | select(.name != "rsomics-kmer" and .name != "rsomics-sketch") | {name,version,source}] | sort_by(.name,.version,.source)' "$evidence/metadata.json" > "$evidence/external-dependencies.json"
+              if [[ "$variant" != baseline ]]; then
+                cmp "$RUNNER_TEMP/evidence/builds/baseline/external-dependencies.json" "$evidence/external-dependencies.json"
+              fi
+              cargo build --release --locked --bin rsomics-sketch --message-format=json > "$evidence/build.jsonl"
+              excluded_ids=$(jq '[.packages[] | select(.name == "rsomics-kmer" or .name == "rsomics-sketch") | .id]' "$evidence/metadata.json")
+              jq -sS --argjson excluded "$excluded_ids" '[.[] | select(.reason == "compiler-artifact") | select(.package_id as $id | $excluded | index($id) | not) | {package_id, target: {name: .target.name, kind: .target.kind}, features: (.features | sort)}] | sort_by(.package_id,.target.name,.target.kind,.features)' "$evidence/build.jsonl" > "$evidence/compiled-external-features.json"
+              if [[ "$variant" != baseline ]]; then
+                cmp "$RUNNER_TEMP/evidence/builds/baseline/compiled-external-features.json" "$evidence/compiled-external-features.json"
+              fi
+              cp Cargo.toml Cargo.lock "$evidence/"
+              cp "$CARGO_TARGET_DIR/release/rsomics-sketch" "$evidence/"
+              (cd "$evidence" && shasum -a 256 rsomics-sketch Cargo.lock > SHA256SUMS)
+              if [[ "$variant" == candidate ]]; then
+                cargo test --release --locked --all-targets --all-features
+                RSOMICS_SKETCH_BIN="$evidence/rsomics-sketch" SOURMASH=sourmash cargo test --release --locked --test oracle -- --ignored
+                (cd "$evidence" && shasum -a 256 -c SHA256SUMS)
+              fi
+            )
+          done
+      - name: Acquire the complete pinned fixture
+        run: |
+          if [[ "$WORKLOAD" == genome ]]; then
+            input_name=GCF_000005845.2_ASM584v2_genomic.fna
+            url=https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz
+            curl --fail --location --retry 3 --max-time 300 --dump-header "$RUNNER_TEMP/evidence/input-http-headers.txt" "$url" -o "$RUNNER_TEMP/inputs/$input_name.gz"
+            test "$(shasum -a 256 "$RUNNER_TEMP/inputs/$input_name.gz" | awk '{print $1}')" = a96d3cfa58c88d477013c768f90a11d2386d42a70d566abfb6d9013dcbd24255
+            gzip -dc "$RUNNER_TEMP/inputs/$input_name.gz" > "$RUNNER_TEMP/inputs/$input_name"
+            input_sha=53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4
+          else
+            input_name=SRR341550_1.fastq.gz
+            url=https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR341/SRR341550/SRR341550_1.fastq.gz
+            curl --fail --location --retry 3 --max-time 900 --dump-header "$RUNNER_TEMP/evidence/input-http-headers.txt" "$url" -o "$RUNNER_TEMP/inputs/$input_name"
+            input_sha=d7a15c1762d64a5434ced0cc665d7f5d167ca81a71e239f8237b9cd490dd7683
+          fi
+          test "$(shasum -a 256 "$RUNNER_TEMP/inputs/$input_name" | awk '{print $1}')" = "$input_sha"
+          printf '%s\n' "$url" > "$RUNNER_TEMP/evidence/input-url.txt"
+          echo "INPUT_NAME=$input_name" >> "$GITHUB_ENV"
+          echo "INPUT_SHA=$input_sha" >> "$GITHUB_ENV"
+      - name: Record source and host provenance
+        run: |
+          {
+            date -u
+            uname -a
+            if [[ "$RUNNER_OS" == Linux ]]; then lscpu; else sysctl -n machdep.cpu.brand_string; fi
+            rustc -Vv
+            cargo -V
+            git rev-parse HEAD
+            shasum -a 256 .github/benchmarks/measure.py
+          } > "$RUNNER_TEMP/evidence/provenance.txt"
+          cp .github/benchmarks/measure.py .github/workflows/benchmark.yml "$RUNNER_TEMP/evidence/"
+      - name: Measure paired full-input construction
+        run: |
+          options=(--warmups 4 --rounds 16)
+          if [[ "$WORKLOAD" == fastq-abundance ]]; then options=(--warmups 1 --rounds 8 --abundance); fi
+          python -B .github/benchmarks/measure.py \
+            --input "$RUNNER_TEMP/inputs/$INPUT_NAME" --sha256 "$INPUT_SHA" \
+            --output-dir "$RUNNER_TEMP/evidence/trials" \
+            --baseline "$RUNNER_TEMP/evidence/builds/baseline/rsomics-sketch" \
+            --reference "$RUNNER_TEMP/evidence/builds/reference/rsomics-sketch" \
+            --candidate "$RUNNER_TEMP/evidence/builds/candidate/rsomics-sketch" \
+            --sourmash "$(command -v sourmash)" "${options[@]}"
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: sketch-construction-${{ matrix.runner }}-${{ matrix.workload }}
+          path: ${{ runner.temp }}/evidence
+          if-no-files-found: error
+          retention-days: 90

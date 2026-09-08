@@ -16,6 +16,15 @@ fn sourmash() -> String {
     std::env::var("SOURMASH").expect("set SOURMASH to the pinned sourmash 4.9.4 executable")
 }
 
+fn rsomics() -> String {
+    std::env::var_os("RSOMICS_SKETCH_BIN")
+        .map(|path| {
+            path.into_string()
+                .expect("RSOMICS_SKETCH_BIN must be UTF-8")
+        })
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_rsomics-sketch").to_owned())
+}
+
 fn sketch_with(program: &str, input: &Path, output: &Path, parameter: &str) {
     if program.ends_with("sourmash") {
         run(
@@ -56,7 +65,7 @@ fn sketch_with(program: &str, input: &Path, output: &Path, parameter: &str) {
 #[ignore = "requires the pinned live sourmash oracle"]
 fn generated_signatures_are_byte_identical() {
     let sourmash = sourmash();
-    let rsomics = env!("CARGO_BIN_EXE_rsomics-sketch");
+    let rsomics = &rsomics();
     let directory = tempfile::tempdir().unwrap();
     let input = directory.path().join("random.fa");
     let mut state = 0x9e37_79b9_u64;
@@ -127,7 +136,7 @@ fn generated_signatures_are_byte_identical() {
 #[ignore = "requires the pinned live sourmash oracle"]
 fn short_sequences_match_sourmash() {
     let sourmash = sourmash();
-    let rsomics = env!("CARGO_BIN_EXE_rsomics-sketch");
+    let rsomics = &rsomics();
     let directory = tempfile::tempdir().unwrap();
     for k in [31, 51] {
         for extension in ["fa", "fq"] {
@@ -162,7 +171,7 @@ fn short_sequences_match_sourmash() {
 #[ignore = "requires the pinned live sourmash oracle"]
 fn comparison_and_search_scores_match() {
     let sourmash = sourmash();
-    let rsomics = env!("CARGO_BIN_EXE_rsomics-sketch");
+    let rsomics = &rsomics();
     let directory = tempfile::tempdir().unwrap();
     let sequences = [
         ("query", b"ACGTTGCATGTCGCATGATGCATGAGAGCT".as_slice()),
