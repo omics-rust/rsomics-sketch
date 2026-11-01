@@ -63,10 +63,18 @@ jobs:
         run: python -B -m unittest discover -s .github/benchmarks -p test_measure.py 2>&1 | tee "$RUNNER_TEMP/evidence/recorder-tests.log"
       - name: Install and record the pinned oracle
         run: |
+          set -euo pipefail
           python -m pip install --report "$RUNNER_TEMP/evidence/pip-install.json" sourmash==4.9.4 2>&1 | tee "$RUNNER_TEMP/evidence/pip-install.log"
-          sourmash --version | tee "$RUNNER_TEMP/evidence/sourmash-version.txt"
-          test "$(sourmash --version)" = 'sourmash 4.9.4'
           python -m pip freeze > "$RUNNER_TEMP/evidence/pip-freeze.txt"
+          SOURMASH="$(command -v sourmash)"
+          if [[ "$EXPECTED_HOST" == aarch64-unknown-linux-gnu ]]; then
+            SOURMASH="$GITHUB_WORKSPACE/scripts/ci-sourmash"
+            test -x "$SOURMASH"
+            "$SOURMASH" --record-runtime "$RUNNER_TEMP/evidence/sourmash-runtime-before.json"
+          fi
+          echo "SOURMASH=$SOURMASH" >> "$GITHUB_ENV"
+          "$SOURMASH" --version | tee "$RUNNER_TEMP/evidence/sourmash-version.txt"
+          printf '%s\n' 'sourmash 4.9.4' | cmp - "$RUNNER_TEMP/evidence/sourmash-version.txt"
       - name: Bind the current source and exact Git foundation
         run: python -B scripts/delivery.py source 2>&1 | tee "$RUNNER_TEMP/evidence/source.log"
       - name: Archive one normal release build before test-feature builds
@@ -81,7 +89,7 @@ jobs:
           cp "$CARGO_TARGET_DIR/release/rsomics-sketch" "$evidence/rsomics-sketch"
           (cd "$evidence" && shasum -a 256 rsomics-sketch Cargo.lock > SHA256SUMS)
           cargo test --release --locked --all-targets --all-features 2>&1 | tee "$evidence/release-tests.log"
-          RSOMICS_SKETCH_BIN="$evidence/rsomics-sketch" SOURMASH=sourmash cargo test --release --locked --test oracle -- --ignored 2>&1 | tee "$evidence/archived-binary-oracle.log"
+          RSOMICS_SKETCH_BIN="$evidence/rsomics-sketch" cargo test --release --locked --test oracle -- --ignored 2>&1 | tee "$evidence/archived-binary-oracle.log"
           (cd "$evidence" && shasum -a 256 -c SHA256SUMS)
       - name: Acquire the complete pinned fixture
         run: |
@@ -113,8 +121,13 @@ jobs:
             --input "$RUNNER_TEMP/inputs/$INPUT_NAME" --sha256 "$INPUT_SHA" \
             --output-dir "$RUNNER_TEMP/evidence/trials" \
             --candidate "$RUNNER_TEMP/evidence/builds/candidate/rsomics-sketch" \
-            --sourmash "$(command -v sourmash)" "${options[@]}" 2>&1 | tee "$RUNNER_TEMP/evidence/measurement.log"
+            --sourmash "$SOURMASH" "${options[@]}" 2>&1 | tee "$RUNNER_TEMP/evidence/measurement.log"
           (cd "$RUNNER_TEMP/evidence/builds/candidate" && shasum -a 256 -c SHA256SUMS)
+      - name: Verify the ARM oracle runtime bytes after measurements
+        if: ${{ always() && matrix.native.host == 'aarch64-unknown-linux-gnu' && env.SOURMASH != '' }}
+        run: |
+          "$SOURMASH" --record-runtime "$RUNNER_TEMP/evidence/sourmash-runtime-after.json"
+          cmp "$RUNNER_TEMP/evidence/sourmash-runtime-before.json" "$RUNNER_TEMP/evidence/sourmash-runtime-after.json"
       - name: Retain all paired distributions and enforce strict process-RSS advantage
         run: |
           python -B - <<'PY'

@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""CI-only Linux aarch64 launcher for the unmodified sourmash 4.9.4 oracle."""
+
+import hashlib
+from importlib.metadata import distribution
+import json
+import os
+from pathlib import Path
+import platform
+import runpy
+import shutil
+import sys
+
+if sys.platform != 'linux' or platform.machine() != 'aarch64':
+    raise SystemExit('this oracle launcher requires Linux aarch64')
+oracle = distribution('sourmash')
+if oracle.version != '4.9.4':
+    raise SystemExit('this oracle launcher requires sourmash 4.9.4')
+entry = shutil.which('sourmash')
+if entry is None:
+    raise SystemExit('the original sourmash console entry is absent from PATH')
+entry = Path(entry).resolve()
+loader = Path(oracle.locate_file('sourmash/_lowlevel/__init__.py')).resolve()
+library = loader.with_name('lib_lowlevel.so')
+flags = os.RTLD_NOW | os.RTLD_NODELETE
+
+if sys.argv[1:2] == ['--record-runtime']:
+    if len(sys.argv) != 3:
+        raise SystemExit('usage: ci-sourmash --record-runtime PATH')
+    paths = dict(entry=entry, loader=loader, library=library, launcher=Path(__file__).resolve())
+    files = {}
+    for name, path in paths.items():
+        body = path.read_bytes()
+        files[name] = dict(path=str(path), bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+    expected = dict(loader='ea7836e0b38b5f291c1533739a23cae397965719d15914c758f84cdfed3b4341',
+                    library='91c12e66f455eb474cf3104e290bbf293f3452d3d093570df804e37da31ed97c')
+    for name, digest in expected.items():
+        if files[name]['sha256'] != digest:
+            raise SystemExit('official sourmash 4.9.4 ARM wheel bytes differ: ' + name)
+    record = dict(schema='rsomics.sketch.sourmash-arm-runtime.v1',
+                  platform=sys.platform, machine=platform.machine(), system=platform.platform(),
+                  python=dict(executable=sys.executable, version=sys.version),
+                  upstream_version=oracle.version, files=files,
+                  loader_flags=dict(names=['RTLD_NOW', 'RTLD_NODELETE'], value=flags),
+                  scope='CI oracle only; unmodified upstream files; process timing includes launcher startup and library retention.')
+    with Path(sys.argv[2]).open('x', encoding='utf-8') as stream:
+        stream.write(json.dumps(record, indent=2, sort_keys=True) + '\n')
+    raise SystemExit(0)
+
+from cffi import FFI
+
+ffi = FFI()
+retained_library = ffi.dlopen(str(library), flags)
+sys.argv = [str(entry), *sys.argv[1:]]
+runpy.run_path(str(entry), run_name='__main__')

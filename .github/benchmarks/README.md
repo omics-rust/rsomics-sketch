@@ -24,6 +24,16 @@ and after measurements. No test-feature binary is substituted.
 
 The upstream is sourmash 4.9.4. Its installation report captures selected
 download URLs and hashes, and `pip freeze` records the resolved environment.
+Linux aarch64 alone selects the private `scripts/ci-sourmash` launcher
+described in the [oracle runtime note](../../README.md#linux-arm-ci-oracle-runtime).
+It retains the exact official wheel library through the original console entry
+without patching upstream files or suppressing exit failures. All live oracle
+tests and timed trials inherit that same absolute `SOURMASH` path; the other
+three native classes use the direct absolute console entry. Outside timed
+trials, before/after runtime JSON records verify the official loader/library
+hashes and compare upstream entry, loader, library, launcher, Python/platform
+and loader-flag identities. A mismatch fails the job and both records remain
+in the artifact. No sourmash runtime is bundled with the native product.
 The manifest supplies the immutable foundation revision; no runner-local
 Cargo patch or registry fallback silently selects a different source.
 
@@ -66,6 +76,10 @@ thread counts and matching cross-tool thread counts are not measured or
 claimed. Wall/user/system time and process RSS describe the actual CLI
 configuration, not a single-thread kernel comparison. These are warm-cache
 measurements, not exclusive-host, cold-start filesystem or scaling claims.
+Linux ARM's reference wall time and RSS also include launcher startup and
+`RTLD_NODELETE` library retention. The focused runtime diagnostic did not earn
+native-four compatibility or a performance pass; both actual gates remain
+mandatory for the repaired workflow head.
 Every command writes to a fresh directory. No input or previous output is
 deleted, and an existing evidence directory is rejected even when empty.
 

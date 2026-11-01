@@ -73,6 +73,26 @@ signing or system-runtime clearance. Original dependency and Git-foundation
 terms and scope are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
 [licenses/provenance.json](licenses/provenance.json).
 
+### Linux ARM CI oracle runtime
+
+Only the Linux aarch64 CI reference uses the private `scripts/ci-sourmash`
+launcher from the source archive. It retains the
+official sourmash 4.9.4 wheel's `lib_lowlevel.so` with `RTLD_NODELETE`, then
+forwards arguments and exit status through the original console entry. The
+upstream entry, loader, library and scientific functions are not patched;
+other native classes call sourmash directly. This is a CI oracle dependency,
+not a component bundled into the native product binary.
+
+The initial native run `41353788925` passed three classes but failed Linux
+ARM at oracle process exit. Two-Python run `41354486584` and exit trace
+`41355005538` retained that failure; focused lifetime contrast `41356083581`
+placed the fatal address inside the previously loaded library and showed
+successful version/sketch exits with library retention and unchanged upstream
+bytes. These diagnostics support this bounded runtime workaround, not a
+general Rust/CFFI cause, a new native-four pass, or performance acceptance.
+Runtime records verify the official ARM loader/library hashes and retain
+entry/launcher identities; measurements compare those records before/after.
+
 ## Performance
 
 The following results describe the historical 0.1.0 build, not a new corrected
@@ -82,6 +102,9 @@ complete inputs, and all four native classes; it requires lower candidate
 process RSS in every measured pair while retaining all throughput losses.
 There is no guard-causal, universal speed or inspect/compare/search performance
 claim. See the [current measurement protocol](.github/benchmarks/README.md).
+The Linux ARM reference includes launcher startup and shared-library retention
+in its measured wall time and process RSS; it is the configured CLI process,
+not a pure-kernel or equal-thread comparison.
 
 On the 4.70 Mbp *E. coli* K-12 MG1655 reference, `sketch` at `k=31` and
 `scaled=1000` produced a byte-identical signature in 0.813 s versus 1.035 s

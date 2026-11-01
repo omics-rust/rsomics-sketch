@@ -63,10 +63,18 @@ jobs:
         run: python -B -m unittest discover -s .github/benchmarks -p test_measure.py 2>&1 | tee "$RUNNER_TEMP/evidence/recorder-tests.log"
       - name: Install and record the pinned compatibility oracle
         run: |
+          set -euo pipefail
           python -m pip install --report "$RUNNER_TEMP/evidence/pip-install.json" sourmash==4.9.4 2>&1 | tee "$RUNNER_TEMP/evidence/pip-install.log"
-          sourmash --version | tee "$RUNNER_TEMP/evidence/sourmash-version.txt"
-          test "$(sourmash --version)" = 'sourmash 4.9.4'
           python -m pip freeze > "$RUNNER_TEMP/evidence/pip-freeze.txt"
+          SOURMASH="$(command -v sourmash)"
+          if [[ "$EXPECTED_HOST" == aarch64-unknown-linux-gnu ]]; then
+            SOURMASH="$GITHUB_WORKSPACE/scripts/ci-sourmash"
+            test -x "$SOURMASH"
+            "$SOURMASH" --record-runtime "$RUNNER_TEMP/evidence/sourmash-runtime-before.json"
+          fi
+          echo "SOURMASH=$SOURMASH" >> "$GITHUB_ENV"
+          "$SOURMASH" --version | tee "$RUNNER_TEMP/evidence/sourmash-version.txt"
+          printf '%s\n' 'sourmash 4.9.4' | cmp - "$RUNNER_TEMP/evidence/sourmash-version.txt"
       - name: Check formatting, strict lint and documentation
         run: |
           cargo fmt --all -- --check 2>&1 | tee "$RUNNER_TEMP/evidence/fmt.log"
@@ -84,7 +92,6 @@ jobs:
           cargo install --path . --locked --root "$RUNNER_TEMP/installed" 2>&1 | tee "$RUNNER_TEMP/evidence/source-install.log"
       - name: Run all four live oracle tests in debug and release against the installed binary
         env:
-          SOURMASH: sourmash
           RSOMICS_SKETCH_BIN: ${{ runner.temp }}/installed/bin/rsomics-sketch
         run: |
           cd "$SOURCE_DIRECTORY"
