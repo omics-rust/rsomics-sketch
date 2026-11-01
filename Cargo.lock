@@ -473,9 +473,8 @@ dependencies = [
 
 [[package]]
 name = "rsomics-kmer"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1254977d1eaf89b29e727b7ea552ec8bd4bd0740b45fa40ac943e93ffaf9ed4"
+version = "0.2.3"
+source = "git+https://github.com/omics-rust/rsomics-kmer?rev=c79111f31651bad581920b7b5c2ddde9a57534e1#c79111f31651bad581920b7b5c2ddde9a57534e1"
 dependencies = [
  "nthash",
  "thiserror 2.0.19",
@@ -494,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "rsomics-sketch"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "criterion",

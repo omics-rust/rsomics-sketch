@@ -10,6 +10,8 @@ from pathlib import Path
 
 TOOLS = ("baseline", "reference", "candidate", "sourmash")
 ORDERS = ((0, 1, 3, 2), (1, 2, 0, 3), (2, 3, 1, 0), (3, 0, 2, 1))
+PRODUCT_TOOLS = ("candidate", "sourmash")
+PRODUCT_ORDERS = ((0, 1), (1, 0))
 
 
 def sha256(path):
@@ -106,20 +108,30 @@ def main():
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--rounds", type=int, default=8)
     parser.add_argument("--abundance", action="store_true")
+    parser.add_argument("--profile", choices=("legacy", "product"), default="legacy")
     for name in TOOLS:
-        parser.add_argument(f"--{name}", type=Path, required=True)
+        parser.add_argument(f"--{name}", type=Path)
     args = parser.parse_args()
     system = platform.system()
     if system not in ("Linux", "Darwin"):
         parser.error("native Linux or macOS is required")
-    if args.warmups < 1 or args.rounds < 4 or args.rounds % 4:
+    tools, orders = (PRODUCT_TOOLS, PRODUCT_ORDERS) if args.profile == "product" else (TOOLS, ORDERS)
+    if args.warmups < 1 or args.rounds < len(tools) or args.rounds % len(tools):
         parser.error(
-            "require positive warmups and at least four measured rounds divisible by four"
+            f"require positive warmups and at least {len(tools)} measured rounds divisible by {len(tools)}"
         )
+    if any(getattr(args, name) is None for name in tools):
+        parser.error("require explicit executables for " + ", ".join(tools))
+    if args.profile == "product" and (args.baseline is not None or args.reference is not None):
+        parser.error("product profile selects only candidate and sourmash; do not supply baseline/reference roles")
     input_path = args.input.resolve(strict=True)
     if sha256(input_path) != args.sha256:
         parser.error("input SHA-256 differs from the pinned fixture")
-    programs = {name: getattr(args, name).resolve(strict=True) for name in TOOLS}
+    programs = {name: getattr(args, name).resolve(strict=True) for name in tools}
+    if any(not path.is_file() or not os.access(path, os.X_OK) for path in programs.values()):
+        parser.error("every selected program must be an executable file")
+    if args.profile == "product" and len(set(programs.values())) != 2:
+        parser.error("product profile requires distinct candidate and sourmash executables")
     output = args.output_dir.resolve()
     output.mkdir(parents=True)
     environment = {
@@ -155,6 +167,7 @@ def main():
             "seed": 42,
             "warmups": args.warmups,
             "rounds": args.rounds,
+            "profile": args.profile,
             "programs": {
                 name: {"path": str(path), "sha256": sha256(path)}
                 for name, path in programs.items()
@@ -168,8 +181,8 @@ def main():
     with (output / "observations.jsonl").open("x", buffering=1) as observations:
         for phase, rounds in (("warmup", args.warmups), ("measurement", args.rounds)):
             for round_index in range(rounds):
-                for position, index in enumerate(ORDERS[round_index % len(ORDERS)]):
-                    tool = TOOLS[index]
+                for position, index in enumerate(orders[round_index % len(orders)]):
+                    tool = tools[index]
                     relative = Path(f"{phase}-{round_index:02d}-{tool}")
                     directory = output / relative
                     signature = directory / "signature.json"
@@ -201,7 +214,8 @@ def main():
     write_json(
         output / "complete.json",
         {
-            "measured_trials": args.rounds * len(TOOLS),
+            "measured_trials": args.rounds * len(tools),
+            "profile": args.profile,
             "output_sha256": hashlib.sha256(expected).hexdigest(),
             "performance_decision": "requires review of paired timing and RSS distributions",
         },

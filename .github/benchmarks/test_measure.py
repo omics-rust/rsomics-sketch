@@ -146,6 +146,33 @@ class MeasurementTests(unittest.TestCase):
             16,
         )
 
+    def test_product_profile_retains_two_balanced_roles_and_rejects_changed_bytes(self):
+        self.tools = {name: self.tools[name] for name in ("candidate", "sourmash")}
+        result = self.run_measurement("--profile", "product")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads((self.output / "manifest.json").read_text())
+        self.assertEqual(set(manifest["programs"]), {"candidate", "sourmash"})
+        rows = [json.loads(line) for line in (self.output / "observations.jsonl").read_text().splitlines()]
+        self.assertEqual(len(rows), 10)
+        measured = [row for row in rows if row["phase"] == "measurement"]
+        self.assertEqual(len(measured), 8)
+        for name in ("candidate", "sourmash"):
+            self.assertEqual(sorted(row["position"] for row in measured if row["tool"] == name), [0, 0, 1, 1])
+        for index in range(4):
+            self.assertEqual([row["tool"] for row in measured if row["round"] == index],
+                             ["candidate", "sourmash"] if index % 2 == 0 else ["sourmash", "candidate"])
+        self.assertEqual(json.loads((self.output / "complete.json").read_text())["measured_trials"], 8)
+        for row in rows:
+            self.assertEqual((self.output / row["output"]).read_bytes(), b"complete signature\n")
+        self.tools["sourmash"].write_text(
+            self.tools["sourmash"].read_text().replace("complete signature", "complete signature changed")
+        )
+        self.output = self.root / "changed-output"
+        failed = self.run_measurement("--profile", "product")
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn("output bytes differ", failed.stderr)
+        self.assertFalse((self.output / "complete.json").exists())
+
     def test_existing_evidence_is_not_overwritten(self):
         self.output.mkdir()
         retained = self.output / "observations.jsonl"

@@ -20,8 +20,10 @@ rsomics-sketch search genome.sig references.sig -o matches.tsv --threshold 0.1
 ```
 
 FASTA and FASTQ inputs may be plain, gzip, or BGZF. Signature output is
-committed transactionally; a failed parse or write leaves an existing named
-destination unchanged. A `.gz` output suffix writes a gzip-compressed
+committed transactionally; parse, validation and write failures before the
+rename/commit leave an existing named destination unchanged. A directory-sync
+error after commit can report failure after the destination has changed; no
+post-commit rollback is promised. A `.gz` output suffix writes a gzip-compressed
 signature. Sequence bytes are normalized case-insensitively to A/C/G/T.
 Ambiguous windows are skipped, matching the default sourmash DNA sketch
 profile; `--check-sequence` instead rejects the first invalid byte.
@@ -40,7 +42,46 @@ containment-root estimator and are not Mash distance estimates.
 Containment matrices follow sourmash orientation: each cell is the fraction of
 the column signature contained in the row signature.
 
+## Corrected source/native delivery candidate
+
+The 0.1.1 candidate retains the four commands and existing signature/API
+contracts. It adopts `rsomics-kmer 0.2.3` from the exact public Git revision
+`c79111f31651bad581920b7b5c2ddde9a57534e1`, including the short-input iterator
+repair. Scale recovery and collection-wide comparison retain their existing
+repairs. Records shorter than `k` contribute no windows. The strict parser
+still rejects an empty FASTA sequence; valid empty FASTQ records can contribute
+no windows, while a file with no sequence records remains an input error.
+No producer or sequence-utility release is implied by this product adoption.
+
+Registry 0.1.0 is not this corrected candidate; the required kmer 0.2.3 is not
+registry-published. This product sets `publish = false`. GitHub release and
+fresh public installation remain pending native/source/install qualification,
+current-head construction measurements, original adoption and root's public
+action. No available 0.1.1 release asset is implied here.
+
+The delivery shape is an exact Git-preserving `*-source.tar` with `SOURCE.json`
+and one binary archive per native Linux/macOS x86_64/aarch64 class, with
+original terms, `BUILD.json` and checksums. The source TAR is not a normalized
+Cargo registry crate and does not vendor dependencies. Building its unchanged
+manifest/lock with `cargo install --path . --locked` needs access to the pinned
+public Git source and registry downloads or corresponding caches. Local project
+work uses `scripts/guarded-cargo.sh` and explicitly external installation/output
+paths; its trusted `--exec` mode is not an arbitrary-tool sandbox.
+
+Native host/toolchain and Git/lock identities are recorded, not minimum-OS,
+signing or system-runtime clearance. Original dependency and Git-foundation
+terms and scope are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and
+[licenses/provenance.json](licenses/provenance.json).
+
 ## Performance
+
+The following results describe the historical 0.1.0 build, not a new corrected
+delivery binary. The final-head construction gate is pending. Its current
+product profile uses only two real roles (candidate and sourmash 4.9.4), both
+complete inputs, and all four native classes; it requires lower candidate
+process RSS in every measured pair while retaining all throughput losses.
+There is no guard-causal, universal speed or inspect/compare/search performance
+claim. See the [current measurement protocol](.github/benchmarks/README.md).
 
 On the 4.70 Mbp *E. coli* K-12 MG1655 reference, `sketch` at `k=31` and
 `scaled=1000` produced a byte-identical signature in 0.813 s versus 1.035 s

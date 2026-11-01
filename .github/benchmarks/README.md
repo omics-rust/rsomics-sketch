@@ -5,55 +5,67 @@ product executables. It does not benchmark a rewritten inner-loop driver or
 automatically approve publication. Production code and public APIs are not
 changed by this measurement workflow.
 
-## Controls
+## Current product profile
 
-All three product executables use the workflow's exact sketch Git head and
-Rust 1.91.0. Their foundation selections are:
+The workflow explicitly selects `--profile product`: two real executables,
+the current-head candidate and sourmash. It does not manufacture baseline or
+reference roles, change the product dependency selection, or attribute a
+resource difference to a particular guard or foundation change.
 
-- baseline: registry `rsomics-kmer 0.2.2`, with its published checksum asserted;
-- reference: corrected foundation `23e42f37e9578e59d9935c0d529b07d1aac49eb9`;
-- candidate: foundation `61de048cb1fce0c860beb22e78d2cdf9233aac39`.
-
-The latter two currently have identical production source and serve as a
-same-source product control. Runner-local Cargo configurations select their
-Git dependencies; public product manifests retain registry dependencies.
-Resolved external package identities and the external features reported by
-Cargo's actual build artifacts must match the baseline before execution.
-All three executables are archived from the same ordinary release-bin build,
-before any test builds. Native release tests run with the candidate dependency;
-the full live sourmash oracle suite explicitly executes the archived candidate
-through `RSOMICS_SKETCH_BIN`, including the short-input regression. Its digest
-is checked again after those tests.
+The candidate uses the exact workflow Git head, Rust 1.91.0 and the ordinary
+locked manifest: product 0.1.1 with Git `rsomics-kmer 0.2.3` at
+`c79111f31651bad581920b7b5c2ddde9a57534e1`. One normal release-bin build is
+archived before any test-feature build. Cargo metadata, exact source TAR and
+lockfile, actual compiled external dependency features, compiler/native host
+and executable digests bind that binary. Native release tests and all four
+live sourmash oracles execute the archived candidate through
+`RSOMICS_SKETCH_BIN`, including short input. Its digest is checked after tests
+and after measurements. No test-feature binary is substituted.
 
 The upstream is sourmash 4.9.4. Its installation report captures selected
 download URLs and hashes, and `pip freeze` records the resolved environment.
-When evaluating a future candidate, update the pinned revision explicitly;
-the workflow does not silently select a newer foundation head.
+The manifest supplies the immutable foundation revision; no runner-local
+Cargo patch or registry fallback silently selects a different source.
+
+The recorder's default `legacy` profile retains the historical four-role
+protocol and balanced schedule for interpreting old experiments. Existing
+raw controls/results are not rewritten, reclassified as this product gate,
+or evidence that this final binary was measured.
 
 ## Complete inputs
 
-| Workload | Source | Input SHA-256 | Warmup rounds | Measured rounds |
-|---|---|---|---|---|
-| Genome FASTA | [NCBI ASM584v2](https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz) | `53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4` | 4 | 16 |
-| Gzip FASTQ abundance | [ENA SRR341550 read 1](https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR341/SRR341550/SRR341550_1.fastq.gz) | `d7a15c1762d64a5434ced0cc665d7f5d167ca81a71e239f8237b9cd490dd7683` | 1 | 8 |
+| Workload | Source | Input bytes | Input SHA-256 | Warmup rounds | Measured rounds |
+|---|---|---|---|---|---|
+| Genome FASTA | [NCBI ASM584v2](https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz) | 4,699,745 | `53bb6a51b6e92139ced1e38f74b7938781027c52200922ff03718c2237d23bb4` | 4 | 16 |
+| Gzip FASTQ abundance | [ENA SRR341550 read 1](https://ftp.sra.ebi.ac.uk/vol1/fastq/SRR341/SRR341550/SRR341550_1.fastq.gz) | 87,439,836 | `d7a15c1762d64a5434ced0cc665d7f5d167ca81a71e239f8237b9cd490dd7683` | 1 | 8 |
 
 The genome's source gzip is also checked against
 `a96d3cfa58c88d477013c768f90a11d2386d42a70d566abfb6d9013dcbd24255`.
 The 4,699,745-byte FASTA and full 6,282,141-read FASTQ are unchanged from the
 historical workload identities, not downsampled replacements.
 
-Each round runs baseline, reference, candidate and sourmash once. A four-order
-balanced schedule distributes every tool equally across measurement positions
-and within-round predecessor pairs. Commands use DNA `k=31`, `scaled=1000`, explicit seed 42,
+Each product round runs candidate and sourmash once, alternating their order.
+Even measured round counts balance the two positions. Commands use DNA
+`k=31`, `scaled=1000`, explicit seed 42,
 and abundance only for the FASTQ workload. Every output must be nonempty and
 byte-identical across tools and repeats. Absolute input paths are common to
 all commands in one job; metadata paths can differ from old release outputs.
 
 ## Measurement and retention
 
-Linux pins one allowed CPU. Both operating systems set common thread-limit
-variables to one; macOS has no forced CPU affinity. These are single-worker,
-warm-cache CLI measurements, not cold-start filesystem or multi-worker claims.
+The eight-job matrix covers both complete workloads on native Linux/macOS,
+x86_64/aarch64. Each command measures one CLI process. Linux pins all of its
+threads to one actual allowed CPU and records that CPU; macOS has no forced
+CPU affinity and is not an equivalent one-CPU budget.
+
+OMP/OpenBLAS/MKL/Rayon environment limits are one, not a cap on total process
+threads. The locked `rsomics-seqio 0.4.0` gzip path starts a separate
+`seqio-gzip` decoder thread independently of those limits. It shares the one
+allowed CPU on Linux but may overlap sketching across CPUs on macOS. Total
+thread counts and matching cross-tool thread counts are not measured or
+claimed. Wall/user/system time and process RSS describe the actual CLI
+configuration, not a single-thread kernel comparison. These are warm-cache
+measurements, not exclusive-host, cold-start filesystem or scaling claims.
 Every command writes to a fresh directory. No input or previous output is
 deleted, and an existing evidence directory is rejected even when empty.
 
@@ -72,8 +84,17 @@ observations. The input files themselves remain reproducible from their
 pinned sources and hashes. Observations are also printed in CI logs.
 
 `complete.json` is written only after all commands and byte comparisons
-succeed. Its presence means collection completed; release approval still
-requires paired time/RSS analysis, scoped upstream advantage, review of any
-same-source bias or slowdown, current correctness gates and artifact retention
-outside temporary runner storage. Historical August results are not reused
-as a new release decision.
+succeed; it is a collection receipt, not release approval. The workflow then
+writes `paired-summary.json` with each measured pair and each tool's wall,
+user/system CPU, process peak RSS and input-byte throughput distributions
+(count, mean, median, sample standard deviation, minimum and maximum).
+Input-byte throughput uses compressed bytes for the gzip workload.
+
+The resource gate requires strictly lower candidate process peak RSS in
+every measured pair in every one of the eight jobs. Equality or one losing
+pair fails that job; the paired summary and raw outcomes remain available.
+Wall-time losses stay explicit rather than being hidden behind the memory
+advantage. Final acceptance still requires the exact-head native/source/install
+gate, original artifact adoption, review and retention outside temporary
+runner storage. Historical August results are not reused as a new release
+decision; inspect/compare/search performance is not measured here.
