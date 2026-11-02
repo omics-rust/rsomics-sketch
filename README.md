@@ -42,9 +42,9 @@ containment-root estimator and are not Mash distance estimates.
 Containment matrices follow sourmash orientation: each cell is the fraction of
 the column signature contained in the row signature.
 
-## Corrected source/native delivery candidate
+## Native and source installation
 
-The 0.1.1 candidate retains the four commands and existing signature/API
+The 0.1.1 release retains the four commands and existing signature/API
 contracts. It adopts `rsomics-kmer 0.2.3` from the exact public Git revision
 `c79111f31651bad581920b7b5c2ddde9a57534e1`, including the short-input iterator
 repair. Scale recovery and collection-wide comparison retain their existing
@@ -53,11 +53,16 @@ still rejects an empty FASTA sequence; valid empty FASTQ records can contribute
 no windows, while a file with no sequence records remains an input error.
 No producer or sequence-utility release is implied by this product adoption.
 
-Registry 0.1.0 is not this corrected candidate; the required kmer 0.2.3 is not
-registry-published. This product sets `publish = false`. GitHub release and
-fresh public installation remain pending native/source/install qualification,
-current-head construction measurements, original adoption and root's public
-action. No available 0.1.1 release asset is implied here.
+Download [release 0.1.1](https://github.com/omics-rust/rsomics-sketch/releases/tag/v0.1.1)
+for Linux or macOS on x86_64 or aarch64, verify `SHA256SUMS`, extract the archive
+and place `rsomics-sketch` in your chosen binary directory. Four native
+source-install/oracle/lifecycle jobs and both complete measured workloads per
+platform pass. A fresh public Mac download also passes the complete installed
+four-command workflow, including short inputs and output preservation.
+
+Registry 0.1.0 is not this corrected delivery; the required kmer 0.2.3 is not
+registry-published. This product still sets `publish = false`; use the native
+release or its source archive rather than expecting registry 0.1.1.
 
 The delivery shape is an exact Git-preserving `*-source.tar` with `SOURCE.json`
 and one binary archive per native Linux/macOS x86_64/aarch64 class, with
@@ -92,19 +97,48 @@ bytes. These diagnostics support this bounded runtime workaround, not a
 general Rust/CFFI cause, a new native-four pass, or performance acceptance.
 Runtime records verify the official ARM loader/library hashes and retain
 entry/launcher identities; measurements compare those records before/after.
+The later final native run `41357249401` and measurement run `41360132692`
+pass all four native classes and all eight platform/workload jobs. The earlier
+failed originals remain retained; diagnostics alone were not treated as gates.
 
 ## Performance
 
-The following results describe the historical 0.1.0 build, not a new corrected
-delivery binary. The final-head construction gate is pending. Its current
-product profile uses only two real roles (candidate and sourmash 4.9.4), both
-complete inputs, and all four native classes; it requires lower candidate
-process RSS in every measured pair while retaining all throughput losses.
+Release 0.1.1's exact shipped binary bytes were measured against sourmash 4.9.4
+on both complete inputs across all four native classes. Process peak RSS is
+strictly lower in all 96 measured pairs. Wall time loses in 42 pairs and mean
+wall time loses in four of eight cohorts; this is a resource advantage, not a
+universal throughput win. Values below are means, ours / sourmash, with MB
+equal to 1,000,000 bytes. Genome uses 16 measured pairs; FASTQ uses eight.
+
+| Native class / input | Wall seconds | Process peak RSS MB |
+|---|---:|---:|
+| Linux x86_64 / genome | 0.528 / 0.702 | 8.95 / 156.48 |
+| Linux x86_64 / FASTQ abundance | 65.825 / 51.165 | 10.79 / 135.09 |
+| Linux aarch64 / genome | 0.521 / 0.946 | 8.10 / 145.63 |
+| Linux aarch64 / FASTQ abundance | 40.740 / 47.136 | 9.67 / 124.43 |
+| macOS x86_64 / genome | 2.348 / 2.026 | 6.91 / 114.26 |
+| macOS x86_64 / FASTQ abundance | 266.380 / 136.375 | 9.00 / 93.26 |
+| macOS aarch64 / genome | 0.713 / 1.023 | 7.91 / 127.70 |
+| macOS aarch64 / FASTQ abundance | 50.688 / 40.164 | 19.78 / 106.76 |
+
+All paired values, CPU/RSS/throughput distributions, original identities and
+losses are in the [accepted final measurement record](https://github.com/omics-rust/rsomics-world/blob/3af6276c8a838d2729ce6f4936215f5c8f803b55/.autopilot/oracles/sketch-final-performance-2026-11-02.json).
+Bundled BUILD/README pending flags are preserved as construction-time records;
+the later byte-identity-matched measurements resolve that gate without changing
+the original release archives.
+
 There is no guard-causal, universal speed or inspect/compare/search performance
 claim. See the [current measurement protocol](.github/benchmarks/README.md).
 The Linux ARM reference includes launcher startup and shared-library retention
 in its measured wall time and process RSS; it is the configured CLI process,
 not a pure-kernel or equal-thread comparison.
+Linux pins all threads to one allowed CPU; macOS has unforced affinity and may
+overlap the separate gzip decoder thread with sketching. These are warm-cache
+CLI measurements, not matched-thread or cold-cache scaling evidence.
+
+### Historical 0.1.0 measurements
+
+These earlier values belong to the historical build, not the new release.
 
 On the 4.70 Mbp *E. coli* K-12 MG1655 reference, `sketch` at `k=31` and
 `scaled=1000` produced a byte-identical signature in 0.813 s versus 1.035 s

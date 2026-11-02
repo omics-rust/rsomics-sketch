@@ -112,3 +112,15 @@ advantage. Final acceptance still requires the exact-head native/source/install
 gate, original artifact adoption, review and retention outside temporary
 runner storage. Historical August results are not reused as a new release
 decision; inspect/compare/search performance is not measured here.
+
+## Accepted 0.1.1 execution
+
+The single [41360132692/1 run](https://github.com/omics-rust/rsomics-sketch/actions/runs/41360132692)
+passed all eight jobs at `eb1b15102f1adaedb738e4ddb98bd9bd841669d1`.
+Complete original adoption verifies 232 trials, 96 lower-RSS measured pairs,
+all 42 wall-time losing pairs, and exact byte identity between every measured
+executable and its released native binary. Full paired values and CPU/RSS/
+throughput distributions are in the [accepted measurement record](https://github.com/omics-rust/rsomics-world/blob/3af6276c8a838d2729ce6f4936215f5c8f803b55/.autopilot/oracles/sketch-final-performance-2026-11-02.json).
+Native/source/install run `41357249401` and a fresh public Mac installation
+also pass. This later evidence resolves the original BUILD pending flags;
+neither original archives nor earlier failed-runtime records were rewritten.
